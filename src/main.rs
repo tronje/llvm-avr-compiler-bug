@@ -8,32 +8,12 @@ use atmega_hal::port::{Pin, PD0, PD1};
 use atmega_hal::usart::BaudrateExt;
 use avr_device::atmega164pa::USART0;
 use core::panic::PanicInfo;
+use ufmt::uwriteln;
 
 type Usart<USART, RX, TX> = atmega_hal::usart::Usart<USART, RX, TX, MHz10>;
 type Usart0 = Usart<USART0, Pin<Input<AnyInput>, PD0>, Pin<Output, PD1>>;
 type Usart0Writer =
     atmega_hal::usart::UsartWriter<USART0, Pin<Input<AnyInput>, PD0>, Pin<Output, PD1>, MHz10>;
-
-static mut LOGGER: Option<Usart0Writer> = None;
-
-fn logger_init(logger: Usart0Writer) {
-    unsafe {
-        LOGGER.replace(logger);
-    }
-}
-
-fn logger_get() -> &'static mut Usart0Writer {
-    unsafe { LOGGER.as_mut().unwrap() }
-}
-
-macro_rules! log {
-    ($($arg:tt)*) => {
-        {
-            let logger = crate::logger_get();
-            ufmt::uwriteln!(logger, $($arg)*).ok();
-        }
-    };
-}
 
 struct State {
     a: u32,
@@ -43,28 +23,31 @@ struct State {
 
     #[allow(unused)]
     padding: [bool; 49],
+
+    writer: Usart0Writer,
 }
 
 impl State {
-    pub fn new() -> Self {
+    pub fn new(writer: Usart0Writer) -> Self {
         Self {
             a: 0,
             b: 0,
             c: 0,
             d: 0,
             padding: [true; 49],
+            writer,
         }
     }
 
     #[inline(never)]
-    pub fn run(self) -> ! {
-        log!("{}\r", self.a);
-        log!("{}\r", self.b);
-        log!("{}\r", self.c);
-        log!("{}\r", self.d);
+    pub fn run(mut self) -> ! {
+        uwriteln!(self.writer, "{}\r", self.a).ok();
+        uwriteln!(self.writer, "{}\r", self.b).ok();
+        uwriteln!(self.writer, "{}\r", self.c).ok();
+        uwriteln!(self.writer, "{}\r", self.d).ok();
 
         if self.d != 0 {
-            log!("BUG\r");
+            uwriteln!(self.writer, "BUG\r").ok();
         }
 
         loop {}
@@ -91,8 +74,7 @@ fn main() -> ! {
     );
 
     let (_, writer) = serial.split();
-    logger_init(writer);
 
-    let state = State::new();
+    let state = State::new(writer);
     state.run()
 }
